@@ -52,8 +52,8 @@ button{font-family:inherit}
 .route-casing{stroke:var(--casing)}
 .me{fill:#2F7BEA;fill-opacity:1;stroke:#fff;stroke-width:3}
 .pt-wrap{background:none;border:0}
-.pt{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;border:3px solid var(--route);box-shadow:0 1px 4px rgba(0,0,0,.45)}
-.pt-start,.pt-end{width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #fff}
+.pt{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;border:2px solid var(--route);box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.pt-start,.pt-end{width:16px;height:16px;margin:-8px 0 0 -8px;border:2px solid #fff}
 .pt-start{background:var(--start)}
 .pt-end{background:var(--route)}
 .split-wrap{background:none;border:0;pointer-events:none}
@@ -64,6 +64,21 @@ button{font-family:inherit}
   padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;max-height:74vh}
 @media (min-width:820px){
   .panel{left:16px;top:16px;bottom:16px;right:auto;width:364px;border-radius:18px;max-height:none;padding:16px 20px 20px}
+}
+.panel-hide{display:grid;place-items:center;width:100%;height:28px;margin:-4px 0 2px;border:0;background:none;color:var(--muted);cursor:pointer;border-radius:8px}
+.panel-hide:hover{background:var(--surface-2);color:var(--ink)}
+.panel-hide svg{width:22px;height:22px}
+@media (min-width:820px){
+  .panel-hide svg{transform:rotate(90deg)}
+}
+.panel-hidden .panel{display:none}
+.panel-show{position:fixed;z-index:1000;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:none;
+  align-items:center;gap:6px;border:0;background:var(--surface);color:var(--ink);border-radius:999px;padding:11px 18px;
+  font-size:15px;font-weight:600;box-shadow:var(--shadow);cursor:pointer}
+.panel-show svg{width:20px;height:20px}
+.panel-hidden .panel-show{display:flex}
+@media (min-width:820px){
+  .panel-show{left:16px;bottom:auto;top:16px;transform:none}
 }
 .tabs{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:12px;margin-bottom:14px;flex:none}
 .tab{flex:1;border:0;background:transparent;color:var(--muted);font-size:15px;font-weight:600;padding:10px 8px;border-radius:9px;cursor:pointer}
@@ -140,6 +155,8 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
 <div id="map" aria-label="Map. Tap to add points to your route."></div>
 
 <aside class="panel" id="panel">
+  <button class="panel-hide" id="panelHideBtn" title="Hide panel" aria-label="Hide panel">
+    <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tabMeasure" aria-selected="true" aria-controls="measureView">Measure</button>
     <button class="tab" role="tab" id="tabSaved" aria-selected="false" aria-controls="savedView">Saved routes <span class="count" id="savedCount"></span></button>
@@ -177,6 +194,8 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
     </div>
   </section>
 </aside>
+<button class="panel-show" id="panelShowBtn" hidden>
+  <svg class="i" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>Show panel</button>
 
 <dialog id="saveDlg" aria-labelledby="dlgTitle">
   <form method="dialog" id="saveForm">
@@ -219,8 +238,10 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
   const r6 = n => Math.round(n * 1e6) / 1e6;
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-  const prefs = Object.assign({unit:'km', layer:'map', view:null, lastAct:'run'}, load(KEY.prefs, {}) || {});
+  const prefs = Object.assign({unit:'km', layer:'map', view:null, lastAct:'run', showPoints:true, panelHidden:false}, load(KEY.prefs, {}) || {});
   if (!UNIT[prefs.unit]) prefs.unit = 'km';
+  if (typeof prefs.showPoints !== 'boolean') prefs.showPoints = true;
+  if (typeof prefs.panelHidden !== 'boolean') prefs.panelHidden = false;
   let routes = load(KEY.routes, []);
   if (!Array.isArray(routes)) routes = [];
   routes = routes.filter(r => r && r.id && Array.isArray(r.pts));
@@ -282,6 +303,8 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
   const ICON = {
     loc:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
     layers:'<svg class="i" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>',
+    eye:'<svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+    eyeOff:'<svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7c2.3 0 4.3.9 5.9 2.1M22 12s-3.5 7-10 7c-2.3 0-4.3-.9-5.9-2.1"/><path d="m3 3 18 18"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
     trash:'<svg class="i" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>'
   };
   const Ctl = L.Control.extend({
@@ -289,7 +312,8 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
     onAdd(){
       const el = L.DomUtil.create('div', 'leaflet-bar ctl');
       el.innerHTML = `<a href="#" role="button" id="locBtn" title="Show my location" aria-label="Show my location">${ICON.loc}</a>
-                      <a href="#" role="button" id="layerBtn" title="Switch to satellite" aria-label="Switch map style">${ICON.layers}</a>`;
+                      <a href="#" role="button" id="layerBtn" title="Switch to satellite" aria-label="Switch map style">${ICON.layers}</a>
+                      <a href="#" role="button" id="pointsBtn" title="Hide route points" aria-label="Hide route points">${ICON.eye}</a>`;
       L.DomEvent.disableClickPropagation(el);
       return el;
     }
@@ -303,9 +327,9 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
   const splitLayer = L.layerGroup().addTo(map);
   const markerLayer = L.layerGroup().addTo(map);
   const icons = {
-    start: L.divIcon({className:'pt-wrap', html:'<span class="pt pt-start"></span>', iconSize:[36,36], iconAnchor:[18,18]}),
-    end:   L.divIcon({className:'pt-wrap', html:'<span class="pt pt-end"></span>', iconSize:[36,36], iconAnchor:[18,18]}),
-    mid:   L.divIcon({className:'pt-wrap', html:'<span class="pt"></span>', iconSize:[30,30], iconAnchor:[15,15]})
+    start: L.divIcon({className:'pt-wrap', html:'<span class="pt pt-start"></span>', iconSize:[28,28], iconAnchor:[14,14]}),
+    end:   L.divIcon({className:'pt-wrap', html:'<span class="pt pt-end"></span>', iconSize:[28,28], iconAnchor:[14,14]}),
+    mid:   L.divIcon({className:'pt-wrap', html:'<span class="pt"></span>', iconSize:[24,24], iconAnchor:[12,12]})
   };
 
   /* ---------- editing ---------- */
@@ -388,7 +412,8 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
     el.sub.textContent =
       n === 0 ? 'Tap the map where you started to drop your first point.' :
       n === 1 ? 'Now tap along the way you went. Each tap adds a point.' :
-      `${n} points. Tap a point to remove it, drag it to move it, or tap the line to add a bend.`;
+      prefs.showPoints ? `${n} points. Tap a point to remove it, drag it to move it, or tap the line to add a bend.` :
+      `${n} points hidden. Tap the eye icon on the map to show them again for editing.`;
     const r = editingRoute();
     el.editing.hidden = !r;
     if (r) el.editingName.textContent = r.name;
@@ -463,12 +488,49 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
     toast(prefs.layer === 'satellite' ? 'Satellite view' : 'Map view');
   });
   syncLayerBtn();
+
+  /* route points: smaller dots by default, plus a toggle to hide them entirely
+     so the line itself is unobstructed. Hidden points can't be dragged or
+     tapped to remove, which is the point of the clean view; toggling back
+     restores them. Choice is remembered in prefs. */
+  const pointsBtn = $('#pointsBtn');
+  function syncPointsBtn(){
+    pointsBtn.classList.toggle('on', !prefs.showPoints);
+    pointsBtn.innerHTML = prefs.showPoints ? ICON.eye : ICON.eyeOff;
+    const label = prefs.showPoints ? 'Hide route points' : 'Show route points';
+    pointsBtn.title = label; pointsBtn.setAttribute('aria-label', label);
+    pointsBtn.setAttribute('aria-pressed', String(!prefs.showPoints));
+  }
+  function setPointsVisible(show){
+    prefs.showPoints = show; savePrefs(); syncPointsBtn();
+    if (show) map.addLayer(markerLayer); else map.removeLayer(markerLayer);
+    updateReadout();
+  }
+  pointsBtn.addEventListener('click', e => { e.preventDefault(); setPointsVisible(!prefs.showPoints); });
+  if (!prefs.showPoints) map.removeLayer(markerLayer);
+  syncPointsBtn();
+
+  /* panel: hide the bottom sheet (sidebar on desktop) and bring it back
+     with the floating "Show panel" pill. Remembered in prefs. */
+  const panelShowBtn = $('#panelShowBtn');
+  function setPanelHidden(hidden){
+    prefs.panelHidden = hidden; savePrefs();
+    document.body.classList.toggle('panel-hidden', hidden);
+    panelShowBtn.hidden = !hidden;
+    syncPanelHeight();
+    if (hidden) panelShowBtn.focus();
+  }
+  $('#panelHideBtn').addEventListener('click', () => setPanelHidden(true));
+  panelShowBtn.addEventListener('click', () => setPanelHidden(false));
+  if (prefs.panelHidden){ document.body.classList.add('panel-hidden'); panelShowBtn.hidden = false; }
+
   map.on('moveend', () => { const c = map.getCenter(); prefs.view = {c:[r6(c.lat), r6(c.lng)], z:map.getZoom()}; savePrefs(); });
 
   /* panel sizing */
   const desktop = window.matchMedia('(min-width: 820px)');
   function syncPanelHeight(){
-    document.documentElement.style.setProperty('--panel-h', desktop.matches ? '0px' : el.panel.offsetHeight + 'px');
+    const h = (desktop.matches || prefs.panelHidden) ? 0 : el.panel.offsetHeight;
+    document.documentElement.style.setProperty('--panel-h', h + 'px');
   }
   if (window.ResizeObserver) new ResizeObserver(syncPanelHeight).observe(el.panel);
   window.addEventListener('resize', syncPanelHeight); syncPanelHeight();
