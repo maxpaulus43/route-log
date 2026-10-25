@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16221C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Route Log</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF2EF; --surface:#FFFFFF; --surface-2:#F2F5F3; --ink:#16221C; --muted:#5B6861;
+  --line:#D8E0DB; --route:#E0245E; --casing:#FFFFFF; --start:#14935A;
+  --shadow:0 12px 32px rgba(22,34,28,.2);
+  --num:"Barlow Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0E1512; --surface:#17201C; --surface-2:#202B26; --ink:#E7EEEA; --muted:#94A39B;
+    --line:#2C3933; --route:#FF4D85; --casing:#0E1512; --start:#3CCB82;
+    --shadow:0 12px 32px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit}
+:focus-visible{outline:3px solid var(--route);outline-offset:2px}
+#map{position:fixed;inset:0;background:var(--bg)}
+
+/* Leaflet chrome */
+.leaflet-top{top:env(safe-area-inset-top,0px)}
+.leaflet-right{right:env(safe-area-inset-right,0px)}
+.leaflet-bottom{bottom:var(--panel-h,0px)}
+.leaflet-container{font-family:inherit;background:var(--bg)}
+.leaflet-touch .leaflet-bar,.leaflet-bar{border:0;box-shadow:var(--shadow);border-radius:12px;overflow:hidden}
+.leaflet-touch .leaflet-bar a,.leaflet-bar a{width:44px;height:44px;line-height:44px;background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line);display:grid;place-items:center;font-size:22px}
+.leaflet-bar a:last-child{border-bottom:0}
+.leaflet-bar a:hover{background:var(--surface-2);color:var(--ink)}
+.leaflet-bar a.on{color:var(--route)}
+.ctl svg{width:22px;height:22px}
+.leaflet-control-attribution{background:color-mix(in srgb,var(--surface) 80%,transparent)!important;color:var(--muted)}
+.leaflet-control-attribution a{color:var(--ink)}
+.dark-tiles .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.7)}
+.route-line{stroke:var(--route)}
+.route-casing{stroke:var(--casing)}
+.me{fill:#2F7BEA;fill-opacity:1;stroke:#fff;stroke-width:3}
+.pt-wrap{background:none;border:0}
+.pt{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;border:3px solid var(--route);box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.pt-start,.pt-end{width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #fff}
+.pt-start{background:var(--start)}
+.pt-end{background:var(--route)}
+.split-wrap{background:none;border:0;pointer-events:none}
+.split{display:grid;place-items:center;min-width:22px;height:18px;padding:0 4px;border-radius:5px;background:var(--ink);color:var(--surface);font:600 12px/1 var(--num);box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%);position:absolute;left:50%;top:50%}
+
+/* Panel */
+.panel{position:fixed;z-index:1000;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;box-shadow:var(--shadow);
+  padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;max-height:74vh}
+@media (min-width:820px){
+  .panel{left:16px;top:16px;bottom:16px;right:auto;width:364px;border-radius:18px;max-height:none;padding:16px 20px 20px}
+}
+.tabs{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:12px;margin-bottom:14px;flex:none}
+.tab{flex:1;border:0;background:transparent;color:var(--muted);font-size:15px;font-weight:600;padding:10px 8px;border-radius:9px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.tab .count{color:var(--muted);font-weight:500;margin-left:2px}
+
+.readout{display:flex;align-items:flex-end;gap:10px}
+.big{font-family:var(--num);font-weight:600;font-size:clamp(60px,17vw,80px);line-height:.82;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.unit{font-family:var(--num);font-size:22px;font-weight:600;color:var(--route);background:none;border:2px solid currentColor;border-radius:8px;padding:1px 9px 2px;cursor:pointer;margin-bottom:2px}
+.editing{margin:10px 0 0;font-size:14px;color:var(--muted)}
+.editing b{color:var(--ink);font-weight:600}
+.sub{margin:6px 0 14px;color:var(--muted);font-size:15px;line-height:1.4;min-height:2.8em}
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:60px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);border-radius:12px;padding:8px 4px;font-size:13px;font-weight:600;cursor:pointer}
+.btn svg{width:21px;height:21px}
+.btn:disabled{opacity:.38;cursor:default}
+.btn.primary{background:var(--route);border-color:var(--route);color:#fff}
+svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Saved */
+#savedView{display:flex;flex-direction:column;min-height:0;flex:1}
+.totals{display:flex;gap:28px;margin:0 2px 8px;flex:none}
+.stat b{display:block;font-family:var(--num);font-size:30px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:13px}
+.list{list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:0;max-height:44vh;-webkit-overflow-scrolling:touch}
+@media (min-width:820px){.list{max-height:none}}
+.route-item{display:flex;align-items:center;border-top:1px solid var(--line)}
+.route-open{flex:1;min-width:0;display:flex;align-items:center;gap:12px;background:none;border:0;color:inherit;text-align:left;padding:10px 2px;cursor:pointer}
+.shape{width:46px;height:46px;flex:none;background:var(--surface-2);border-radius:10px}
+.shape polyline{fill:none;stroke:var(--route);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
+.shape circle{fill:var(--start)}
+.route-item.current .shape{box-shadow:inset 0 0 0 2px var(--route)}
+.ri-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ri-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ri-meta{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ri-dist{font-family:var(--num);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ri-dist small{font-size:14px;color:var(--muted);margin-left:2px}
+.ri-del{flex:none;width:44px;height:44px;border:0;background:none;color:var(--muted);border-radius:10px;cursor:pointer;display:grid;place-items:center}
+.ri-del:hover{color:var(--route);background:var(--surface-2)}
+.ri-del svg{width:19px;height:19px}
+.empty{color:var(--muted);text-align:center;padding:22px 12px;line-height:1.45;border-top:1px solid var(--line)}
+.saved-foot{display:flex;gap:8px;margin-top:10px;flex:none}
+.ghost{flex:1;border:1px solid var(--line);background:none;color:var(--ink);border-radius:10px;padding:10px;font-size:14px;font-weight:600;cursor:pointer}
+
+/* Dialog */
+dialog{border:0;border-radius:18px;padding:20px;background:var(--surface);color:var(--ink);width:min(92vw,420px);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(8,16,12,.5)}
+dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
+.dlg-dist{margin:0 0 16px;color:var(--muted)}
+.field{display:block;margin-bottom:14px;font-size:14px;font-weight:600}
+.field input{display:block;width:100%;margin-top:6px;font:500 16px/1.2 inherit;font-family:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink)}
+.field input:invalid:not(:placeholder-shown){border-color:var(--route)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border:0;padding:0;margin:0 0 14px}
+.seg legend{font-size:14px;font-weight:600;margin-bottom:6px;padding:0}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;inset:0;margin:0}
+.seg span{display:block;text-align:center;padding:10px 4px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);font-weight:600;cursor:pointer}
+.seg input:checked+span{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.seg input:focus-visible+span{outline:3px solid var(--route);outline-offset:2px}
+.pace{margin:-6px 0 14px;font-size:14px;color:var(--muted);min-height:1.2em}
+.dlg-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.dlg-actions button{border:1px solid var(--line);background:none;color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600;cursor:pointer}
+.dlg-actions .primary{background:var(--route);border-color:var(--route);color:#fff}
+
+.toast{position:fixed;z-index:3000;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translate(-50%,-20px);opacity:0;pointer-events:none;
+  background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:500;max-width:min(90vw,420px);text-align:center;transition:opacity .2s,transform .2s;box-shadow:var(--shadow)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="map" aria-label="Map. Tap to add points to your route."></div>
+
+<aside class="panel" id="panel">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabMeasure" aria-selected="true" aria-controls="measureView">Measure</button>
+    <button class="tab" role="tab" id="tabSaved" aria-selected="false" aria-controls="savedView">Saved routes <span class="count" id="savedCount"></span></button>
+  </div>
+
+  <section id="measureView" role="tabpanel" aria-labelledby="tabMeasure">
+    <div class="readout">
+      <span class="big" id="dist" aria-live="polite">0.00</span>
+      <button class="unit" id="unitBtn" aria-label="Switch units">km</button>
+    </div>
+    <p class="editing" id="editing" hidden>Editing <b id="editingName"></b></p>
+    <p class="sub" id="sub"></p>
+    <div class="actions">
+      <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
+      <button class="btn" id="backBtn" title="Retrace the route back to the start">
+        <svg class="i" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Out &amp; back</button>
+      <button class="btn" id="clearBtn">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>Clear</button>
+      <button class="btn primary" id="saveBtn">
+        <svg class="i" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span id="saveLabel">Save</span></button>
+    </div>
+  </section>
+
+  <section id="savedView" role="tabpanel" aria-labelledby="tabSaved" hidden>
+    <div class="totals">
+      <div class="stat"><b id="weekTotal">0</b><span id="weekLabel">this week</span></div>
+      <div class="stat"><b id="allTotal">0</b><span id="allLabel">all time</span></div>
+    </div>
+    <ul class="list" id="list"></ul>
+    <div class="saved-foot">
+      <button class="ghost" id="exportBtn">Export backup</button>
+      <button class="ghost" id="importBtn">Import backup</button>
+      <input type="file" id="importFile" accept=".json,application/json" class="vh" tabindex="-1">
+    </div>
+  </section>
+</aside>
+
+<dialog id="saveDlg" aria-labelledby="dlgTitle">
+  <form method="dialog" id="saveForm">
+    <h2 id="dlgTitle">Save route</h2>
+    <p class="dlg-dist" id="dlgDist"></p>
+    <fieldset class="seg">
+      <legend>Activity</legend>
+      <label><input type="radio" name="act" value="walk"><span>Walk</span></label>
+      <label><input type="radio" name="act" value="run" checked><span>Run</span></label>
+      <label><input type="radio" name="act" value="bike"><span>Bike</span></label>
+    </fieldset>
+    <label class="field">Name<input id="fName" maxlength="60" autocomplete="off"></label>
+    <div class="row">
+      <label class="field">Date<input id="fDate" type="date"></label>
+      <label class="field">Time (optional)<input id="fTime" placeholder="h:mm:ss" inputmode="numeric" pattern="^\s*\d{1,3}(:\d{1,2}){0,2}\s*$" autocomplete="off"></label>
+    </div>
+    <p class="pace" id="dlgPace"></p>
+    <div class="dlg-actions">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button value="new" id="saveNewBtn" hidden>Save as new</button>
+      <button value="save" class="primary" id="saveMainBtn">Save route</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const KEY = {routes:'routelog.routes.v1', prefs:'routelog.prefs.v1', draft:'routelog.draft.v1'};
+  const UNIT = {km:1000, mi:1609.344};
+  const ACT = {walk:'Walk', run:'Run', bike:'Bike'};
+  const ACT_NOUN = {walk:'walk', run:'run', bike:'ride'};
+
+  function load(k, fb){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } }
+  function store(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
+  const validPt = p => Array.isArray(p) && p.length === 2 && isFinite(p[0]) && isFinite(p[1]);
+  const r6 = n => Math.round(n * 1e6) / 1e6;
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  const prefs = Object.assign({unit:'km', layer:'map', view:null, lastAct:'run'}, load(KEY.prefs, {}) || {});
+  if (!UNIT[prefs.unit]) prefs.unit = 'km';
+  let routes = load(KEY.routes, []);
+  if (!Array.isArray(routes)) routes = [];
+  routes = routes.filter(r => r && r.id && Array.isArray(r.pts));
+  const draft = load(KEY.draft, null) || {};
+  let pts = Array.isArray(draft.pts) ? draft.pts.filter(validPt) : [];
+  let editingId = draft.editingId && routes.some(r => r.id === draft.editingId) ? draft.editingId : null;
+  let history = [];
+  const savePrefs = () => store(KEY.prefs, prefs);
+
+  /* ---------- distance ---------- */
+  function hav(a, b){
+    const R = 6371008.8, t = Math.PI / 180;
+    const dLat = (b[0]-a[0])*t, dLng = (b[1]-a[1])*t;
+    const s = Math.sin(dLat/2)**2 + Math.cos(a[0]*t)*Math.cos(b[0]*t)*Math.sin(dLng/2)**2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+  }
+  function totalM(p){ let d = 0; for (let i = 1; i < p.length; i++) d += hav(p[i-1], p[i]); return d; }
+  function fmt(m){ const v = m / UNIT[prefs.unit]; return v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : v.toFixed(0); }
+  function fmtDur(s){
+    s = Math.round(s); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), sec = s%60;
+    return h ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}`;
+  }
+  function parseDur(str){
+    str = (str || '').trim(); if (!str) return null;
+    const p = str.split(':').map(Number); if (p.some(n => !isFinite(n))) return null;
+    const s = p.length === 1 ? p[0]*60 : p.length === 2 ? p[0]*60 + p[1] : p[0]*3600 + p[1]*60 + p[2];
+    return s > 0 ? s : null;
+  }
+  function paceText(distM, durS, act){
+    if (!durS || !distM) return '';
+    const units = distM / UNIT[prefs.unit];
+    if (act === 'bike') return `${(units / (durS/3600)).toFixed(1)} ${prefs.unit}/h`;
+    return `${fmtDur(durS / units)} /${prefs.unit}`;
+  }
+
+  /* ---------- map ---------- */
+  const map = L.map('map', {zoomControl:false, doubleClickZoom:false, worldCopyJump:true});
+  if (prefs.view && validPt(prefs.view.c)) map.setView(prefs.view.c, prefs.view.z || 14);
+  else map.setView([25, 0], 2);
+  L.control.zoom({position:'topright'}).addTo(map);
+  map.attributionControl.setPrefix(false);
+
+  const darkQ = window.matchMedia('(prefers-color-scheme: dark)');
+  function makeTiles(){
+    if (prefs.layer === 'satellite')
+      return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {maxZoom:20, maxNativeZoom:18, attribution:'Imagery &copy; Esri'});
+    return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:20, maxNativeZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'});
+  }
+  function syncTileTheme(){
+    document.body.classList.toggle('dark-tiles', darkQ.matches && prefs.layer !== 'satellite');
+  }
+  let tiles = makeTiles().addTo(map);
+  syncTileTheme();
+  function swapTiles(){ map.removeLayer(tiles); tiles = makeTiles().addTo(map); syncTileTheme(); }
+  if (darkQ.addEventListener) darkQ.addEventListener('change', syncTileTheme);
+
+  const ICON = {
+    loc:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+    layers:'<svg class="i" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>',
+    trash:'<svg class="i" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>'
+  };
+  const Ctl = L.Control.extend({
+    options:{position:'topright'},
+    onAdd(){
+      const el = L.DomUtil.create('div', 'leaflet-bar ctl');
+      el.innerHTML = `<a href="#" role="button" id="locBtn" title="Show my location" aria-label="Show my location">${ICON.loc}</a>
+                      <a href="#" role="button" id="layerBtn" title="Switch to satellite" aria-label="Switch map style">${ICON.layers}</a>`;
+      L.DomEvent.disableClickPropagation(el);
+      return el;
+    }
+  });
+  new Ctl().addTo(map);
+
+  map.createPane('splits'); map.getPane('splits').style.zIndex = 550; map.getPane('splits').style.pointerEvents = 'none';
+  const casing = L.polyline([], {className:'route-casing', weight:8, opacity:1, interactive:false, lineJoin:'round'}).addTo(map);
+  const line = L.polyline([], {className:'route-line', weight:4.5, opacity:1, interactive:false, lineJoin:'round'}).addTo(map);
+  const hit = L.polyline([], {weight:18, opacity:0, bubblingMouseEvents:false}).addTo(map);
+  const splitLayer = L.layerGroup().addTo(map);
+  const markerLayer = L.layerGroup().addTo(map);
+  const icons = {
+    start: L.divIcon({className:'pt-wrap', html:'<span class="pt pt-start"></span>', iconSize:[36,36], iconAnchor:[18,18]}),
+    end:   L.divIcon({className:'pt-wrap', html:'<span class="pt pt-end"></span>', iconSize:[36,36], iconAnchor:[18,18]}),
+    mid:   L.divIcon({className:'pt-wrap', html:'<span class="pt"></span>', iconSize:[30,30], iconAnchor:[15,15]})
+  };
+
+  /* ---------- editing ---------- */
+  function snapshot(){
+    history.push({pts: pts.map(p => p.slice()), editingId});
+    if (history.length > 300) history.shift();
+  }
+  function undo(){
+    if (!history.length) return;
+    const s = history.pop(); pts = s.pts; editingId = s.editingId; render();
+  }
+
+  map.on('click', e => {
+    snapshot();
+    pts.push([r6(e.latlng.lat), r6(e.latlng.lng)]);
+    render();
+  });
+
+  hit.on('click', e => {
+    if (pts.length < 2) return;
+    const p = map.latLngToLayerPoint(e.latlng);
+    let best = 1, bd = Infinity;
+    for (let i = 1; i < pts.length; i++){
+      const d = L.LineUtil.pointToSegmentDistance(p, map.latLngToLayerPoint(pts[i-1]), map.latLngToLayerPoint(pts[i]));
+      if (d < bd){ bd = d; best = i; }
+    }
+    snapshot();
+    pts.splice(best, 0, [r6(e.latlng.lat), r6(e.latlng.lng)]);
+    render();
+  });
+
+  function removePoint(i){ snapshot(); pts.splice(i, 1); render(); }
+
+  function drawLine(){
+    casing.setLatLngs(pts); line.setLatLngs(pts); hit.setLatLngs(pts);
+    drawSplits();
+  }
+  function drawSplits(){
+    splitLayer.clearLayers();
+    const u = UNIT[prefs.unit]; let acc = 0, next = u, n = 1;
+    for (let i = 1; i < pts.length && n <= 300; i++){
+      const a = pts[i-1], b = pts[i], seg = hav(a, b);
+      while (seg > 0 && acc + seg >= next && n <= 300){
+        const t = (next - acc) / seg;
+        splitLayer.addLayer(L.marker([a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t], {
+          pane:'splits', interactive:false, keyboard:false,
+          icon: L.divIcon({className:'split-wrap', html:`<span class="split">${n}</span>`, iconSize:[0,0]})
+        }));
+        next += u; n++;
+      }
+      acc += seg;
+    }
+  }
+  function drawMarkers(){
+    markerLayer.clearLayers();
+    const n = pts.length;
+    pts.forEach((p, i) => {
+      const kind = i === 0 ? 'start' : (i === n-1 ? 'end' : 'mid');
+      const m = L.marker(p, {icon:icons[kind], draggable:true, autoPan:true, keyboard:false});
+      m.on('click', () => removePoint(i));
+      m.on('dragstart', () => snapshot());
+      m.on('drag', ev => { const ll = ev.target.getLatLng(); pts[i] = [ll.lat, ll.lng]; drawLine(); updateReadout(); });
+      m.on('dragend', () => { pts[i] = [r6(pts[i][0]), r6(pts[i][1])]; render(); });
+      markerLayer.addLayer(m);
+    });
+  }
+
+  /* ---------- UI ---------- */
+  const el = {
+    dist:$('#dist'), unitBtn:$('#unitBtn'), sub:$('#sub'), editing:$('#editing'), editingName:$('#editingName'),
+    undo:$('#undoBtn'), back:$('#backBtn'), clear:$('#clearBtn'), save:$('#saveBtn'), saveLabel:$('#saveLabel'),
+    list:$('#list'), savedCount:$('#savedCount'), panel:$('#panel'), toast:$('#toast')
+  };
+  const editingRoute = () => editingId ? routes.find(r => r.id === editingId) : null;
+
+  function updateReadout(){
+    const m = totalM(pts), n = pts.length;
+    el.dist.textContent = fmt(m);
+    el.unitBtn.textContent = prefs.unit;
+    el.sub.textContent =
+      n === 0 ? 'Tap the map where you started to drop your first point.' :
+      n === 1 ? 'Now tap along the way you went. Each tap adds a point.' :
+      `${n} points. Tap a point to remove it, drag it to move it, or tap the line to add a bend.`;
+    const r = editingRoute();
+    el.editing.hidden = !r;
+    if (r) el.editingName.textContent = r.name;
+    el.saveLabel.textContent = r ? 'Update' : 'Save';
+  }
+  function updateButtons(){
+    el.undo.disabled = !history.length;
+    el.back.disabled = pts.length < 2;
+    el.clear.disabled = !pts.length;
+    el.save.disabled = pts.length < 2;
+  }
+  function render(){
+    drawLine(); drawMarkers(); updateReadout(); updateButtons();
+    store(KEY.draft, {pts, editingId});
+    renderList();
+  }
+
+  let toastT;
+  function toast(msg){
+    el.toast.textContent = msg; el.toast.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => el.toast.classList.remove('show'), 2600);
+  }
+
+  el.unitBtn.addEventListener('click', () => {
+    prefs.unit = prefs.unit === 'km' ? 'mi' : 'km'; savePrefs(); render();
+  });
+  el.undo.addEventListener('click', undo);
+  el.back.addEventListener('click', () => {
+    if (pts.length < 2) return;
+    snapshot(); pts = pts.concat(pts.slice(0, -1).reverse().map(p => p.slice())); render();
+    toast('Added the way back to the start.');
+  });
+  el.clear.addEventListener('click', () => {
+    if (!pts.length) return;
+    snapshot(); pts = []; editingId = null; render();
+    toast('Cleared. Tap Undo to bring it back.');
+  });
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey){
+      if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      e.preventDefault(); undo();
+    }
+  });
+
+  /* location + layers */
+  let locWantsView = false, meMarker = null;
+  function locate(setView){
+    if (!navigator.geolocation){ if (setView) toast('This browser can’t share your location. Pan the map by hand.'); return; }
+    locWantsView = setView;
+    map.locate({setView:false, maximumAge:60000, timeout:12000, enableHighAccuracy:true});
+  }
+  map.on('locationfound', e => {
+    if (!meMarker) meMarker = L.circleMarker(e.latlng, {radius:7, className:'me', interactive:false}).addTo(map);
+    else meMarker.setLatLng(e.latlng);
+    if (locWantsView) map.setView(e.latlng, Math.max(map.getZoom(), 16));
+    locWantsView = false;
+  });
+  map.on('locationerror', () => {
+    if (locWantsView) toast('Couldn’t get your location. Allow location access, or pan the map by hand.');
+    locWantsView = false;
+  });
+  const layerBtn = $('#layerBtn');
+  function syncLayerBtn(){
+    const sat = prefs.layer === 'satellite';
+    layerBtn.classList.toggle('on', sat);
+    layerBtn.title = sat ? 'Switch to map' : 'Switch to satellite';
+  }
+  $('#locBtn').addEventListener('click', e => { e.preventDefault(); locate(true); });
+  layerBtn.addEventListener('click', e => {
+    e.preventDefault();
+    prefs.layer = prefs.layer === 'satellite' ? 'map' : 'satellite'; savePrefs(); swapTiles(); syncLayerBtn();
+    toast(prefs.layer === 'satellite' ? 'Satellite view' : 'Map view');
+  });
+  syncLayerBtn();
+  map.on('moveend', () => { const c = map.getCenter(); prefs.view = {c:[r6(c.lat), r6(c.lng)], z:map.getZoom()}; savePrefs(); });
+
+  /* panel sizing */
+  const desktop = window.matchMedia('(min-width: 820px)');
+  function syncPanelHeight(){
+    document.documentElement.style.setProperty('--panel-h', desktop.matches ? '0px' : el.panel.offsetHeight + 'px');
+  }
+  if (window.ResizeObserver) new ResizeObserver(syncPanelHeight).observe(el.panel);
+  window.addEventListener('resize', syncPanelHeight); syncPanelHeight();
+
+  function fitRoute(){
+    if (!pts.length) return;
+    const b = L.latLngBounds(pts);
+    const opts = desktop.matches
+      ? {paddingTopLeft:[el.panel.offsetWidth + 50, 40], paddingBottomRight:[70, 40], maxZoom:17}
+      : {paddingTopLeft:[30, 60], paddingBottomRight:[70, el.panel.offsetHeight + 30], maxZoom:17};
+    map.fitBounds(b, opts);
+  }
+
+  /* tabs */
+  const tabs = {measure:[$('#tabMeasure'), $('#measureView')], saved:[$('#tabSaved'), $('#savedView')]};
+  function setTab(name){
+    for (const k in tabs){ tabs[k][0].setAttribute('aria-selected', k === name); tabs[k][1].hidden = k !== name; }
+    syncPanelHeight();
+  }
+  tabs.measure[0].addEventListener('click', () => setTab('measure'));
+  tabs.saved[0].addEventListener('click', () => setTab('saved'));
+
+  /* ---------- saved list ---------- */
+  function localISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  const today = () => localISO(new Date());
+  function weekStart(){ const d = new Date(); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return localISO(d); }
+  function niceDate(iso){
+    const d = new Date(iso + 'T12:00:00'); if (isNaN(d)) return iso;
+    const o = {weekday:'short', month:'short', day:'numeric'};
+    if (d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+    return d.toLocaleDateString(undefined, o);
+  }
+  function shapeSVG(p){
+    const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 46 46'); svg.setAttribute('class', 'shape'); svg.setAttribute('aria-hidden', 'true');
+    if (p.length < 2) return svg;
+    const lats = p.map(x => x[0]), lngs = p.map(x => x[1]);
+    const minLa = Math.min(...lats), maxLa = Math.max(...lats), minLo = Math.min(...lngs), maxLo = Math.max(...lngs);
+    const k = Math.cos((minLa + maxLa) / 2 * Math.PI / 180);
+    const w = (maxLo - minLo) * k, h = maxLa - minLa, s = 34 / Math.max(w, h, 1e-9);
+    const ox = (46 - w*s) / 2, oy = (46 - h*s) / 2;
+    const xy = q => [ox + (q[1]-minLo)*k*s, oy + (maxLa-q[0])*s];
+    const pl = document.createElementNS(ns, 'polyline');
+    pl.setAttribute('points', p.map(q => xy(q).map(v => v.toFixed(1)).join(',')).join(' '));
+    const c = document.createElementNS(ns, 'circle'); const st = xy(p[0]);
+    c.setAttribute('cx', st[0].toFixed(1)); c.setAttribute('cy', st[1].toFixed(1)); c.setAttribute('r', '2.6');
+    svg.append(pl, c); return svg;
+  }
+  function renderList(){
+    el.savedCount.textContent = routes.length ? routes.length : '';
+    const ws = weekStart();
+    const all = routes.reduce((s, r) => s + (r.distanceM || 0), 0);
+    const wk = routes.filter(r => r.date >= ws).reduce((s, r) => s + (r.distanceM || 0), 0);
+    $('#weekTotal').textContent = fmt(wk); $('#allTotal').textContent = fmt(all);
+    $('#weekLabel').textContent = `${prefs.unit} this week`; $('#allLabel').textContent = `${prefs.unit} all time`;
+
+    el.list.innerHTML = '';
+    if (!routes.length){
+      const li = document.createElement('li'); li.className = 'empty';
+      li.textContent = 'No saved routes yet. Draw one on the Measure tab and tap Save.';
+      el.list.append(li); return;
+    }
+    const sorted = routes.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt||0) - (a.createdAt||0));
+    for (const r of sorted){
+      const li = document.createElement('li'); li.className = 'route-item' + (r.id === editingId ? ' current' : '');
+      const open = document.createElement('button'); open.className = 'route-open';
+      const main = document.createElement('span'); main.className = 'ri-main';
+      const name = document.createElement('span'); name.className = 'ri-name'; name.textContent = r.name;
+      const meta = document.createElement('span'); meta.className = 'ri-meta';
+      const pace = paceText(r.distanceM, r.durationS, r.activity);
+      meta.textContent = [ACT[r.activity] || 'Route', niceDate(r.date)].join(', ') + (pace ? `. ${pace}` : '');
+      main.append(name, meta);
+      const dist = document.createElement('span'); dist.className = 'ri-dist'; dist.textContent = fmt(r.distanceM || 0);
+      const u = document.createElement('small'); u.textContent = prefs.unit; dist.append(u);
+      open.append(shapeSVG(r.pts), main, dist);
+      open.setAttribute('aria-label', `Open ${r.name}`);
+      open.addEventListener('click', () => openRoute(r.id));
+      const del = document.createElement('button'); del.className = 'ri-del'; del.innerHTML = ICON.trash;
+      del.setAttribute('aria-label', `Delete ${r.name}`);
+      del.addEventListener('click', () => deleteRoute(r.id));
+      li.append(open, del); el.list.append(li);
+    }
+  }
+  function openRoute(id){
+    const r = routes.find(x => x.id === id); if (!r) return;
+    snapshot(); pts = r.pts.map(p => p.slice()); editingId = r.id;
+    setTab('measure'); render(); fitRoute();
+  }
+  function deleteRoute(id){
+    const r = routes.find(x => x.id === id); if (!r) return;
+    if (!confirm(`Delete “${r.name}”? This can’t be undone.`)) return;
+    routes = routes.filter(x => x.id !== id);
+    if (editingId === id) editingId = null;
+    store(KEY.routes, routes); render(); toast('Route deleted.');
+  }
+
+  /* ---------- save dialog ---------- */
+  const dlg = $('#saveDlg'), form = $('#saveForm'), fName = $('#fName'), fDate = $('#fDate'), fTime = $('#fTime');
+  const currentAct = () => (form.querySelector('input[name="act"]:checked') || {}).value || 'run';
+  function defaultName(act, iso){
+    const d = new Date((iso || today()) + 'T12:00:00');
+    const wd = isNaN(d) ? '' : d.toLocaleDateString(undefined, {weekday:'long'});
+    return `${wd} ${ACT_NOUN[act]}`.trim();
+  }
+  function updateDlgHints(){
+    fName.placeholder = defaultName(currentAct(), fDate.value);
+    const pace = paceText(totalM(pts), parseDur(fTime.value), currentAct());
+    $('#dlgPace').textContent = pace ? (currentAct() === 'bike' ? `Average speed ${pace}` : `Pace ${pace}`) : '';
+  }
+  function openSave(){
+    if (pts.length < 2) return;
+    const r = editingRoute();
+    fName.value = r ? r.name : '';
+    const act = r ? r.activity : (prefs.lastAct || 'run');
+    form.querySelectorAll('input[name="act"]').forEach(i => i.checked = i.value === act);
+    fDate.value = r ? r.date : today();
+    fTime.value = r && r.durationS ? fmtDur(r.durationS) : '';
+    $('#saveNewBtn').hidden = !r;
+    $('#saveMainBtn').textContent = r ? 'Update route' : 'Save route';
+    $('#dlgTitle').textContent = r ? 'Update route' : 'Save route';
+    $('#dlgDist').textContent = `${fmt(totalM(pts))} ${prefs.unit}, ${pts.length} points`;
+    updateDlgHints();
+    dlg.returnValue = '';
+    dlg.showModal();
+  }
+  el.save.addEventListener('click', openSave);
+  form.addEventListener('input', updateDlgHints);
+  form.addEventListener('change', updateDlgHints);
+  dlg.addEventListener('close', () => {
+    const v = dlg.returnValue; if (v !== 'save' && v !== 'new') return;
+    const act = currentAct(), date = fDate.value || today();
+    const rec = {
+      name: fName.value.trim() || defaultName(act, date), activity: act, date,
+      durationS: parseDur(fTime.value), pts: pts.map(p => p.slice()),
+      distanceM: Math.round(totalM(pts)), updatedAt: Date.now()
+    };
+    const existing = editingRoute();
+    if (v === 'save' && existing){
+      Object.assign(existing, rec); toast('Route updated.');
+    } else {
+      rec.id = uid(); rec.createdAt = Date.now(); routes.push(rec); editingId = rec.id; toast('Route saved.');
+    }
+    prefs.lastAct = act; savePrefs();
+    if (!store(KEY.routes, routes)) toast('Couldn’t save. This browser is blocking storage for this page.');
+    render();
+  });
+
+  /* ---------- backup ---------- */
+  $('#exportBtn').addEventListener('click', () => {
+    if (!routes.length){ toast('No saved routes to export yet.'); return; }
+    const blob = new Blob([JSON.stringify({app:'route-log', version:1, exportedAt:new Date().toISOString(), routes}, null, 1)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `route-log-${today()}.json`;
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+  const importFile = $('#importFile');
+  $('#importBtn').addEventListener('click', () => importFile.click());
+  importFile.addEventListener('change', () => {
+    const f = importFile.files[0]; if (!f) return;
+    f.text().then(txt => {
+      const data = JSON.parse(txt);
+      const incoming = (Array.isArray(data) ? data : data.routes || []).filter(r => r && r.id && Array.isArray(r.pts) && r.pts.every(validPt));
+      if (!incoming.length) throw new Error('empty');
+      let added = 0;
+      for (const r of incoming){
+        r.distanceM = Math.round(totalM(r.pts));
+        const i = routes.findIndex(x => x.id === r.id);
+        if (i >= 0) routes[i] = r; else { routes.push(r); added++; }
+      }
+      store(KEY.routes, routes); render();
+      toast(`Imported ${incoming.length} route${incoming.length === 1 ? '' : 's'} (${added} new).`);
+    }).catch(() => toast('That file isn’t a Route Log backup.'))
+      .finally(() => { importFile.value = ''; });
+  });
+
+  /* ---------- start ---------- */
+  render();
+  if (pts.length && !prefs.view) fitRoute();
+  if (!prefs.view && !pts.length) locate(true);
+})();
+</script>
+</body>
+</html>
