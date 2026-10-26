@@ -506,7 +506,7 @@ dialog h2{margin:0 0 4px;font-family:var(--num);font-size:28px;font-weight:600}
     if (show) map.addLayer(markerLayer); else map.removeLayer(markerLayer);
     updateReadout();
   }
-  pointsBtn.addEventListener('click', e => { e.preventDefault(); setPointsVisible(!prefs.showPoints); });
+  pointsBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); setPointsVisible(!prefs.showPoints); });
   if (!prefs.showPoints) map.removeLayer(markerLayer);
   syncPointsBtn();
 
